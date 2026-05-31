@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>AR Machine Viewer</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #0a0a0f;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+      color: #fff;
+    }
+
+    /* ─── LANDING SCREEN ─── */
+    #landing {
+      position: fixed; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      background: radial-gradient(ellipse at 50% 30%, #1a1a2e 0%, #0a0a0f 70%);
+      z-index: 100;
+      gap: 0;
+    }
+
+    .landing-glow {
+      position: absolute;
+      width: 400px; height: 400px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(0,200,255,0.08) 0%, transparent 70%);
+      top: 50%; left: 50%;
+      transform: translate(-50%, -60%);
+      animation: pulse-glow 3s ease-in-out infinite;
+    }
+
+    @keyframes pulse-glow {
+      0%, 100% { transform: translate(-50%, -60%) scale(1); opacity: 0.6; }
+      50% { transform: translate(-50%, -60%) scale(1.2); opacity: 1; }
+    }
+
+    .machine-icon {
+      width: 100px; height: 100px;
+      margin-bottom: 28px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .machine-icon svg {
+      width: 100%; height: 100%;
+      filter: drop-shadow(0 0 20px rgba(0,200,255,0.5));
+    }
+
+    .landing-title {
+      font-size: 1.8rem;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      color: #fff;
+      margin-bottom: 8px;
+      position: relative; z-index: 1;
+      text-align: center;
+    }
+
+    .landing-sub {
+      font-size: 0.9rem;
+      color: rgba(255,255,255,0.45);
+      margin-bottom: 48px;
+      position: relative; z-index: 1;
+      text-align: center;
+    }
+
+    .start-btn {
+      position: relative; z-index: 1;
+      background: linear-gradient(135deg, #00c8ff, #0066ff);
+      border: none;
+      border-radius: 50px;
+      padding: 16px 48px;
+      font-size: 1rem;
+      font-weight: 600;
+      color: #fff;
+      cursor: pointer;
+      letter-spacing: 0.5px;
+      box-shadow: 0 0 40px rgba(0,150,255,0.4);
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+
+    .start-btn:active {
+      transform: scale(0.96);
+      box-shadow: 0 0 20px rgba(0,150,255,0.3);
+    }
+
+    .notice {
+      position: relative; z-index: 1;
+      margin-top: 20px;
+      font-size: 0.75rem;
+      color: rgba(255,255,255,0.3);
+      text-align: center;
+      max-width: 280px;
+      line-height: 1.6;
+    }
+
+    /* ─── AR CONTAINER ─── */
+    #ar-container {
+      position: fixed; inset: 0;
+      display: none;
+    }
+
+    canvas { display: block; }
+
+    /* ─── HUD ─── */
+    #hud {
+      position: fixed; inset: 0;
+      pointer-events: none;
+      display: none;
+      z-index: 10;
+    }
+
+    /* Scan reticle */
+    #reticle-wrap {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      display: flex; flex-direction: column;
+      align-items: center; gap: 12px;
+      transition: opacity 0.4s;
+    }
+
+    .reticle {
+      width: 60px; height: 60px;
+      position: relative;
+    }
+
+    .reticle::before, .reticle::after {
+      content: '';
+      position: absolute;
+      width: 20px; height: 20px;
+      border-color: rgba(0,200,255,0.8);
+      border-style: solid;
+    }
+
+    .reticle::before {
+      top: 0; left: 0;
+      border-width: 2px 0 0 2px;
+    }
+    .reticle::after {
+      bottom: 0; right: 0;
+      border-width: 0 2px 2px 0;
+    }
+
+    .reticle-inner {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 6px; height: 6px;
+      background: rgba(0,200,255,0.8);
+      border-radius: 50%;
+      animation: blink 1.2s ease-in-out infinite;
+    }
+
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
+
+    #scan-hint {
+      font-size: 0.8rem;
+      color: rgba(255,255,255,0.7);
+      background: rgba(0,0,0,0.5);
+      padding: 6px 16px;
+      border-radius: 20px;
+      letter-spacing: 0.3px;
+    }
+
+    /* Controls bar */
+    #controls {
+      position: absolute;
+      bottom: 40px; left: 50%;
+      transform: translateX(-50%);
+      display: flex; gap: 16px;
+      pointer-events: all;
+      opacity: 0;
+      transition: opacity 0.5s;
+    }
+
+    #controls.visible { opacity: 1; }
+
+    .ctrl-btn {
+      background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 50px;
+      padding: 12px 22px;
+      color: #fff;
+      font-size: 0.82rem;
+      cursor: pointer;
+      display: flex; align-items: center; gap: 8px;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    .ctrl-btn:active {
+      background: rgba(0,150,255,0.3);
+      border-color: rgba(0,200,255,0.5);
+    }
+
+    .ctrl-btn svg { width: 16px; height: 16px; }
+
+    /* Top bar */
+    #topbar {
+      position: absolute;
+      top: 24px; left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.5);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 50px;
+      padding: 8px 20px;
+      font-size: 0.78rem;
+      color: rgba(255,255,255,0.7);
+      pointer-events: all;
+      display: flex; align-items: center; gap: 8px;
+    }
+
+    .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #00ff88;
+      box-shadow: 0 0 6px #00ff88;
+      animation: blink 1.5s ease-in-out infinite;
+    }
+
+    /* Loading */
+    #loading-screen {
+      position: fixed; inset: 0;
+      background: #0a0a0f;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      z-index: 200;
+      gap: 20px;
+      display: none;
+    }
+
+    .loader-ring {
+      width: 60px; height: 60px;
+      border: 3px solid rgba(255,255,255,0.1);
+      border-top-color: #00c8ff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .loading-text {
+      font-size: 0.9rem;
+      color: rgba(255,255,255,0.5);
+    }
+
+    /* Error */
+    #error-msg {
+      position: fixed;
+      bottom: 100px; left: 50%;
+      transform: translateX(-50%);
+      background: rgba(255,60,60,0.15);
+      border: 1px solid rgba(255,60,60,0.4);
+      border-radius: 12px;
+      padding: 14px 24px;
+      font-size: 0.85rem;
+      color: #ff8080;
+      text-align: center;
+      max-width: 300px;
+      display: none;
+      z-index: 50;
+    }
+
+    /* Fallback 3D viewer (no AR support) */
+    #fallback-viewer {
+      position: fixed; inset: 0;
+      display: none;
+      flex-direction: column;
+      background: #0d0d1a;
+      z-index: 5;
+    }
+
+    #fallback-viewer canvas {
+      flex: 1;
+    }
+
+    #fallback-label {
+      background: rgba(255,150,0,0.15);
+      border-top: 1px solid rgba(255,150,0,0.3);
+      color: rgba(255,180,0,0.8);
+      font-size: 0.8rem;
+      text-align: center;
+      padding: 10px;
+    }
+  </style>
+</head>
+<body>
+
+<!-- Landing -->
+<div id="landing">
+  <div class="landing-glow"></div>
+  <div class="machine-icon">
+    <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="15" y="30" width="70" height="50" rx="4" stroke="#00c8ff" stroke-width="2.5" fill="rgba(0,200,255,0.05)"/>
+      <rect x="25" y="20" width="50" height="15" rx="3" stroke="#00c8ff" stroke-width="2" fill="rgba(0,200,255,0.05)"/>
+      <circle cx="50" cy="55" r="12" stroke="#00c8ff" stroke-width="2" fill="none"/>
+      <circle cx="50" cy="55" r="4" fill="#00c8ff"/>
+      <line x1="30" y1="70" x2="42" y2="70" stroke="#0088ff" stroke-width="2" stroke-linecap="round"/>
+      <line x1="30" y1="75" x2="38" y2="75" stroke="#0088ff" stroke-width="2" stroke-linecap="round"/>
+      <rect x="62" y="62" width="12" height="12" rx="2" stroke="#00c8ff" stroke-width="1.5" fill="none"/>
+    </svg>
+  </div>
+  <div class="landing-title">AR Machine Viewer</div>
+  <div class="landing-sub">ضع الماكينة في مكانك بتقنية الواقع المعزز</div>
+  <button class="start-btn" onclick="startAR()">🎯 ابدأ AR</button>
+  <div class="notice">سيطلب منك إذن الكاميرا — الموقع لا يحفظ أي بيانات</div>
+</div>
+
+<!-- Loading -->
+<div id="loading-screen">
+  <div class="loader-ring"></div>
+  <div class="loading-text">جارٍ تحميل الموديل...</div>
+</div>
+
+<!-- AR Canvas -->
+<div id="ar-container"></div>
+
+<!-- HUD -->
+<div id="hud">
+  <div id="topbar">
+    <span class="dot"></span>
+    <span id="status-text">وجّه الكاميرا نحو سطح مستوي</span>
+  </div>
+
+  <div id="reticle-wrap">
+    <div class="reticle"><div class="reticle-inner"></div></div>
+    <div id="scan-hint">حرّك الهاتف ببطء</div>
+  </div>
+
+  <div id="controls">
+    <button class="ctrl-btn" onclick="resetModel()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+        <path d="M3 3v5h5"/>
+      </svg>
+      إعادة وضع
+    </button>
+    <button class="ctrl-btn" onclick="toggleScale(1.2)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        <line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/>
+      </svg>
+      تكبير
+    </button>
+    <button class="ctrl-btn" onclick="toggleScale(0.8)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        <line x1="8" y1="11" x2="14" y2="11"/>
+      </svg>
+      تصغير
+    </button>
+  </div>
+</div>
+
+<!-- Fallback 3D viewer -->
+<div id="fallback-viewer">
+  <div id="fallback-label">⚠️ جهازك لا يدعم WebXR — عرض 3D عادي بدلاً من AR</div>
+</div>
+
+<!-- Error -->
+<div id="error-msg" id="error-msg"></div>
+
+<!-- Three.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ─────────────────────────────────────────────
+//  CONFIGURATION — غيّر هنا فقط
+// ─────────────────────────────────────────────
+const MODEL_URL = './machine.glb';      // ← ضع اسم ملف الـ GLB هنا
+const MODEL_SCALE = 0.01;              // ← اضبط الحجم حسب مقياس الموديل
+// ─────────────────────────────────────────────
+
+let renderer, scene, camera, model, xrSession, xrRefSpace, xrHitTestSource;
+let placed = false;
+let reticle3D;
+let touchStartX = 0, touchStartY = 0, lastRotY = 0;
+
+function showError(msg) {
+  const el = document.getElementById('error-msg');
+  el.textContent = msg;
+  el.style.display = 'block';
+  setTimeout(() => el.style.display = 'none', 5000);
+}
+
+async function startAR() {
+  document.getElementById('landing').style.display = 'none';
+  document.getElementById('loading-screen').style.display = 'flex';
+
+  // Load Three.js GLTFLoader dynamically
+  await loadGLTFLoader();
+
+  // Check WebXR support
+  if (navigator.xr && await navigator.xr.isSessionSupported('immersive-ar')) {
+    initARScene();
+    requestARSession();
+  } else {
+    initFallback3D();
+  }
+}
+
+function loadGLTFLoader() {
+  return new Promise((resolve) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js';
+    s.onload = resolve;
+    document.head.appendChild(s);
+  });
+}
+
+// ─── WebXR AR Mode ───────────────────────────
+function initARScene() {
+  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.xr.enabled = true;
+  renderer.shadowMap.enabled = true;
+
+  document.getElementById('ar-container').appendChild(renderer.domElement);
+  document.getElementById('ar-container').style.display = 'block';
+  document.getElementById('hud').style.display = 'block';
+
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 100);
+
+  // Lighting
+  const ambient = new THREE.AmbientLight(0xffffff, 0.8);
+  scene.add(ambient);
+  const dir = new THREE.DirectionalLight(0xffffff, 1.2);
+  dir.position.set(2, 4, 2);
+  dir.castShadow = true;
+  scene.add(dir);
+
+  // Reticle ring
+  const ring = new THREE.RingGeometry(0.08, 0.1, 32);
+  ring.applyMatrix4(new THREE.Matrix4().makeRotationX(-Math.PI / 2));
+  reticle3D = new THREE.Mesh(ring, new THREE.MeshBasicMaterial({ color: 0x00c8ff, side: THREE.DoubleSide }));
+  reticle3D.visible = false;
+  scene.add(reticle3D);
+
+  loadModel();
+}
+
+async function requestARSession() {
+  try {
+    xrSession = await navigator.xr.requestSession('immersive-ar', {
+      requiredFeatures: ['hit-test', 'dom-overlay'],
+      domOverlay: { root: document.getElementById('hud') }
+    });
+
+    renderer.xr.setReferenceSpaceType('local');
+    await renderer.xr.setSession(xrSession);
+
+    xrRefSpace = await xrSession.requestReferenceSpace('local');
+    const viewerSpace = await xrSession.requestReferenceSpace('viewer');
+    xrHitTestSource = await xrSession.requestHitTestSource({ space: viewerSpace });
+
+    renderer.setAnimationLoop(onXRFrame);
+    setupTouchControls();
+  } catch (e) {
+    console.error(e);
+    showError('فشل تشغيل AR: ' + e.message);
+    initFallback3D();
+  }
+}
+
+function onXRFrame(time, frame) {
+  if (!frame) return;
+  const session = frame.session;
+
+  const hits = frame.getHitTestResults(xrHitTestSource);
+  if (hits.length > 0 && !placed) {
+    const pose = hits[0].getPose(xrRefSpace);
+    reticle3D.visible = true;
+    reticle3D.matrix.fromArray(pose.transform.matrix);
+    reticle3D.matrix.decompose(reticle3D.position, reticle3D.quaternion, reticle3D.scale);
+  } else if (placed) {
+    reticle3D.visible = false;
+  }
+
+  renderer.render(scene, camera);
+}
+
+function setupTouchControls() {
+  const canvas = renderer.domElement;
+
+  canvas.addEventListener('click', () => {
+    if (!placed && reticle3D.visible && model) {
+      placeModel(reticle3D.position.clone());
+    }
+  });
+
+  // Pinch to scale + drag to rotate
+  let initialDist = null;
+  let initialScale = MODEL_SCALE;
+
+  canvas.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 1) {
+      touchStartX = e.touches[0].clientX;
+    } else if (e.touches.length === 2) {
+      initialDist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      if (model) initialScale = model.scale.x;
+    }
+  });
+
+  canvas.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    if (!model || !placed) return;
+
+    if (e.touches.length === 1) {
+      const dx = e.touches[0].clientX - touchStartX;
+      model.rotation.y = lastRotY + dx * 0.01;
+    } else if (e.touches.length === 2 && initialDist) {
+      const dist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      const s = Math.max(MODEL_SCALE * 0.3, Math.min(MODEL_SCALE * 5, initialScale * (dist / initialDist)));
+      model.scale.setScalar(s);
+    }
+  }, { passive: false });
+
+  canvas.addEventListener('touchend', (e) => {
+    if (e.touches.length === 0 && model) {
+      lastRotY = model.rotation.y;
+      initialDist = null;
+    }
+  });
+}
+
+function placeModel(position) {
+  if (!model) return;
+  model.position.copy(position);
+  model.visible = true;
+  placed = true;
+
+  document.getElementById('reticle-wrap').style.opacity = '0';
+  document.getElementById('status-text').textContent = 'اسحب لتدوير · قرّب الأصابع للتكبير';
+  document.getElementById('controls').classList.add('visible');
+  document.getElementById('loading-screen').style.display = 'none';
+}
+
+function loadModel() {
+  const loader = new THREE.GLTFLoader();
+  loader.load(
+    MODEL_URL,
+    (gltf) => {
+      model = gltf.scene;
+      model.scale.setScalar(MODEL_SCALE);
+      model.visible = false;
+
+      model.traverse((child) => {
+        if (child.isMesh) {
+          child.castShadow = true;
+          child.receiveShadow = true;
+        }
+      });
+
+      scene.add(model);
+      document.getElementById('loading-screen').style.display = 'none';
+    },
+    (progress) => {
+      if (progress.total > 0) {
+        const pct = Math.round((progress.loaded / progress.total) * 100);
+        document.querySelector('.loading-text').textContent = `جارٍ التحميل... ${pct}%`;
+      }
+    },
+    (err) => {
+      console.error(err);
+      document.getElementById('loading-screen').style.display = 'none';
+      showError('تعذّر تحميل الموديل — تأكد من مسار الملف');
+    }
+  );
+}
+
+// ─── Fallback 3D Viewer ──────────────────────
+function initFallback3D() {
+  document.getElementById('loading-screen').style.display = 'flex';
+  const container = document.getElementById('fallback-viewer');
+  container.style.display = 'flex';
+
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setSize(window.innerWidth, window.innerHeight - 40);
+  renderer.shadowMap.enabled = true;
+  container.insertBefore(renderer.domElement, container.firstChild);
+
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0d0d1a);
+
+  camera = new THREE.PerspectiveCamera(60, window.innerWidth / (window.innerHeight - 40), 0.01, 1000);
+  camera.position.set(0, 1.5, 3);
+
+  const ambient = new THREE.AmbientLight(0xffffff, 0.7);
+  scene.add(ambient);
+  const dir = new THREE.DirectionalLight(0xffffff, 1.2);
+  dir.position.set(3, 5, 3);
+  scene.add(dir);
+
+  // Grid
+  const grid = new THREE.GridHelper(10, 20, 0x1a1a3a, 0x1a1a3a);
+  scene.add(grid);
+
+  const loader = new THREE.GLTFLoader();
+  loader.load(MODEL_URL, (gltf) => {
+    model = gltf.scene;
+    const box = new THREE.Box3().setFromObject(model);
+    const size = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const targetSize = 2;
+    model.scale.setScalar(targetSize / maxDim);
+
+    const center = box.getCenter(new THREE.Vector3());
+    model.position.sub(center.multiplyScalar(targetSize / maxDim));
+    model.position.y = 0;
+
+    scene.add(model);
+    document.getElementById('loading-screen').style.display = 'none';
+  }, undefined, (err) => {
+    document.getElementById('loading-screen').style.display = 'none';
+    showError('تعذّر تحميل الموديل');
+  });
+
+  // Touch rotation
+  let isDragging = false;
+  const canvas = renderer.domElement;
+  canvas.addEventListener('touchstart', (e) => { isDragging = true; touchStartX = e.touches[0].clientX; touchStartY = e.touches[0].clientY; });
+  canvas.addEventListener('touchmove', (e) => {
+    if (!isDragging || !model) return;
+    model.rotation.y += (e.touches[0].clientX - touchStartX) * 0.01;
+    touchStartX = e.touches[0].clientX;
+  });
+  canvas.addEventListener('touchend', () => isDragging = false);
+  canvas.addEventListener('mousedown', (e) => { isDragging = true; touchStartX = e.clientX; });
+  canvas.addEventListener('mousemove', (e) => {
+    if (!isDragging || !model) return;
+    model.rotation.y += (e.clientX - touchStartX) * 0.008;
+    touchStartX = e.clientX;
+  });
+  canvas.addEventListener('mouseup', () => isDragging = false);
+
+  renderer.setAnimationLoop(() => {
+    if (model) model.rotation.y += 0.003;
+    renderer.render(scene, camera);
+  });
+}
+
+// ─── UI Helpers ──────────────────────────────
+function resetModel() {
+  placed = false;
+  if (model) model.visible = false;
+  document.getElementById('reticle-wrap').style.opacity = '1';
+  document.getElementById('status-text').textContent = 'وجّه الكاميرا نحو سطح مستوي';
+  document.getElementById('controls').classList.remove('visible');
+}
+
+function toggleScale(factor) {
+  if (!model) return;
+  const cur = model.scale.x;
+  const next = Math.max(MODEL_SCALE * 0.2, Math.min(MODEL_SCALE * 6, cur * factor));
+  model.scale.setScalar(next);
+}
+
+window.addEventListener('resize', () => {
+  if (!renderer) return;
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>
